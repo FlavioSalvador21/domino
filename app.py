@@ -13,9 +13,6 @@ ARQ = "domino_state.json"
 def salvar():
     with open(ARQ,"w") as f:
         json.dump({
-            "turno": st.session_state.turno,
-            "nos": st.session_state.nos,
-            "eles": st.session_state.eles,
             "historico": st.session_state.historico
         },f)
 
@@ -23,10 +20,7 @@ def carregar():
     if os.path.exists(ARQ):
         with open(ARQ) as f:
             d=json.load(f)
-            st.session_state.turno=d["turno"]
-            st.session_state.nos=d["nos"]
-            st.session_state.eles=d["eles"]
-            st.session_state.historico=d["historico"]
+            st.session_state.historico=d.get("historico",[])
 
 # =========================
 # Estado inicial
@@ -34,9 +28,6 @@ def carregar():
 
 if "init" not in st.session_state:
     st.session_state.init=True
-    st.session_state.turno=1
-    st.session_state.nos=0
-    st.session_state.eles=0
     st.session_state.historico=[]
     carregar()
 
@@ -52,24 +43,24 @@ def registrar():
     if pontos <= 0:
         return
 
-    linha = {"Turno": st.session_state.turno, "NÓS":0, "ELES":0}
+    linha = {"Turno": len(st.session_state.historico)+1,
+             "NÓS": 0,
+             "ELES": 0}
 
     if time == "NÓS":
-        st.session_state.nos += pontos
         linha["NÓS"] = pontos
     else:
-        st.session_state.eles += pontos
         linha["ELES"] = pontos
 
     st.session_state.historico.append(linha)
-    st.session_state.turno += 1
     st.session_state.pontos = 0
     salvar()
 
+def recalcular(df_editado):
+    st.session_state.historico = df_editado.to_dict("records")
+    salvar()
+
 def novo_jogo():
-    st.session_state.turno=1
-    st.session_state.nos=0
-    st.session_state.eles=0
     st.session_state.historico=[]
     salvar()
 
@@ -79,38 +70,48 @@ def novo_jogo():
 
 st.title("🁫 DOMINÓ")
 
-c1,c2 = st.columns(2)
+# calcula placar sempre a partir do histórico
+nos_total = sum(linha["NÓS"] for linha in st.session_state.historico)
+eles_total = sum(linha["ELES"] for linha in st.session_state.historico)
 
-c1.metric("NÓS", st.session_state.nos)
-c2.metric("ELES", st.session_state.eles)
+c1,c2 = st.columns(2)
+c1.metric("NÓS", nos_total)
+c2.metric("ELES", eles_total)
 
 st.divider()
 
-st.subheader(f"Turno {st.session_state.turno}")
+st.subheader("Registrar novo turno")
 
 st.radio("Quem pontuou?", ["NÓS","ELES"], horizontal=True, key="time")
-
 st.number_input("Pontos do turno", min_value=0, step=1, key="pontos")
 
 st.button("Registrar Turno", on_click=registrar)
 
 st.divider()
 
-# vencedor
-if st.session_state.nos >= 100:
+# vencedor automático
+if nos_total >= 100:
     st.success("🏆 NÓS venceram!")
-elif st.session_state.eles >= 100:
+elif eles_total >= 100:
     st.success("🏆 ELES venceram!")
 
 # =========================
-# Histórico
+# Histórico editável
 # =========================
 
 if st.session_state.historico:
 
-    df = pd.DataFrame(st.session_state.historico).set_index("Turno")
-    st.subheader("Histórico de Turnos")
-    st.dataframe(df, use_container_width=True)
+    df = pd.DataFrame(st.session_state.historico)
+
+    st.subheader("Histórico (editável)")
+    df_editado = st.data_editor(
+        df,
+        use_container_width=True,
+        num_rows="fixed",
+        key="editor"
+    )
+
+    recalcular(df_editado)
 
 st.divider()
 
